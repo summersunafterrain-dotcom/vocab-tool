@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TXT & Word 文本净化工具 · 单词/短语分离</title>
+    <!-- 引入 mammoth.js 用于解析 .docx 文件 -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+        :root { --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0; }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #f1f5f9;
+            margin: 0; padding: 1.5rem;
+            display: flex; justify-content: center;
+        }
+        .container { max-width: 1000px; width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
+        h1 { text-align: center; color: #0f172a; margin-bottom: 0; }
+        .card {
+            background: var(--card); border-radius: 12px; padding: 1.5rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid var(--border);
+        }
+        textarea {
+            width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.9rem;
+            padding: 0.8rem; border: 1px solid var(--border); border-radius: 8px;
+            resize: vertical; background: #fafafa;
+        }
+        .input-area textarea { height: 180px; }
+        .output-area textarea { height: 200px; background: #f0fdf4; }
+        .row { display: flex; gap: 1rem; flex-wrap: wrap; align-items: center; margin: 0.8rem 0; }
+        .btn {
+            background: var(--primary); color: white; border: none; padding: 0.6rem 1.4rem;
+            border-radius: 8px; font-weight: 600; cursor: pointer; transition: 0.2s;
+            font-size: 0.9rem; display: inline-flex; align-items: center; gap: 0.3rem;
+        }
+        .btn:hover { background: #1d4ed8; }
+        .btn-outline { background: white; color: var(--primary); border: 1px solid var(--primary); }
+        .btn-outline:hover { background: #eff6ff; }
+        .btn-sm { padding: 0.3rem 1rem; font-size: 0.8rem; }
+        .option-group {
+            display: flex; align-items: center; gap: 1rem; flex-wrap: wrap;
+        }
+        label { font-weight: 500; cursor: pointer; display: flex; align-items: center; gap: 0.3rem; }
+        .custom-input { width: 80px; padding: 0.3rem; border: 1px solid #cbd5e1; border-radius: 4px; }
+        .note { font-size: 0.8rem; color: #64748b; margin-top: 0.3rem; }
+        .tab-container { display: flex; gap: 0.5rem; margin-bottom: 1rem; }
+        .tab {
+            background: #e2e8f0; border: none; padding: 0.5rem 1.2rem; border-radius: 6px;
+            cursor: pointer; font-weight: 600; transition: 0.2s;
+        }
+        .tab.active { background: var(--primary); color: white; }
+        .upload-area { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        .file-info { font-size: 0.85rem; color: #475569; margin-left: 0.5rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>🧹 TXT & Word 文本净化工具</h1>
+
+    <!-- 输入区域 -->
+    <div class="card input-area">
+        <div class="tab-container">
+            <button class="tab active" data-tab="text">📋 粘贴文本</button>
+            <button class="tab" data-tab="txt">📄 上传 TXT</button>
+            <button class="tab" data-tab="word">📘 上传 Word</button>
+        </div>
+
+        <!-- 粘贴文本面板 -->
+        <div id="panelText">
+            <textarea id="inputText" placeholder="在此粘贴要处理的文本..."></textarea>
+        </div>
+
+        <!-- 上传 TXT 面板 -->
+        <div id="panelTxt" style="display:none;">
+            <div class="upload-area">
+                <button class="btn btn-sm btn-outline" id="uploadTxtBtn">📁 选择 TXT 文件</button>
+                <input type="file" id="txtFileInput" accept=".txt" style="display:none;">
+                <span class="file-info" id="txtFileName"></span>
+            </div>
+            <textarea id="txtPreview" placeholder="TXT 文件内容将显示在这里..." readonly style="height:160px; margin-top:0.5rem;"></textarea>
+        </div>
+
+        <!-- 上传 Word 面板 -->
+        <div id="panelWord" style="display:none;">
+            <div class="upload-area">
+                <button class="btn btn-sm btn-outline" id="uploadWordBtn">📁 选择 Word 文件 (.docx)</button>
+                <input type="file" id="wordFileInput" accept=".docx" style="display:none;">
+                <span class="file-info" id="wordFileName"></span>
+            </div>
+            <textarea id="wordPreview" placeholder="Word 文件提取的文本将显示在这里..." readonly style="height:160px; margin-top:0.5rem;"></textarea>
+        </div>
+    </div>
+
+    <!-- 处理选项 -->
+    <div class="card">
+        <div style="font-weight: 600; margin-bottom: 0.8rem;">⚙️ 处理选项</div>
+        <div class="row">
+            <div class="option-group">
+                <span>模式：</span>
+                <label><input type="radio" name="mode" value="word" checked> 单词模式</label>
+                <label><input type="radio" name="mode" value="phrase"> 短语模式</label>
+            </div>
+            <div class="option-group">
+                <span>短语分隔符：</span>
+                <label title="使用换行、逗号、分号等分割短语"><input type="checkbox" id="useNewline" checked> 换行/逗号/分号</label>
+            </div>
+        </div>
+        <div class="row">
+            <div class="option-group">
+                <span>去除符号：</span>
+                <label><input type="checkbox" id="removeDigits" checked> 数字 (0-9)</label>
+                <label><input type="checkbox" id="removeAsterisk" checked> 星号 (*)</label>
+                <label>
+                    自定义:
+                    <input type="text" id="customSymbols" class="custom-input" placeholder="例如 #@%">
+                </label>
+            </div>
+        </div>
+        <div class="note">
+            💡 单词模式：按非字母拆分，每行一个纯单词。短语模式：保留内部空格，按分隔符拆为多行，并保留短语结构。
+        </div>
+        <button class="btn" id="processBtn">🔍 开始处理</button>
+    </div>
+
+    <!-- 输出区域 -->
+    <div class="card output-area">
+        <div style="display:flex; justify-content: space-between; align-items: center; margin-bottom:0.5rem;">
+            <strong>✨ 处理结果（仅英语文本）</strong>
+            <button class="btn btn-sm btn-outline" id="copyBtn">📋 复制结果</button>
+        </div>
+        <textarea id="outputText" readonly placeholder="处理后的文本将显示在这里..."></textarea>
+    </div>
+</div>
+
+<script>
+    (function() {
+        // ---- DOM 元素 ----
+        const tabs = document.querySelectorAll('.tab');
+        const panelText = document.getElementById('panelText');
+        const panelTxt = document.getElementById('panelTxt');
+        const panelWord = document.getElementById('panelWord');
+        const inputText = document.getElementById('inputText');
+        const outputText = document.getElementById('outputText');
+        const processBtn = document.getElementById('processBtn');
+        const copyBtn = document.getElementById('copyBtn');
+        const modeRadios = document.getElementsByName('mode');
+        const removeDigits = document.getElementById('removeDigits');
+        const removeAsterisk = document.getElementById('removeAsterisk');
+        const customSymbols = document.getElementById('customSymbols');
+        const useNewline = document.getElementById('useNewline');
+
+        // TXT 上传相关
+        const uploadTxtBtn = document.getElementById('uploadTxtBtn');
+        const txtFileInput = document.getElementById('txtFileInput');
+        const txtFileName = document.getElementById('txtFileName');
+        const txtPreview = document.getElementById('txtPreview');
+
+        // Word 上传相关
+        const uploadWordBtn = document.getElementById('uploadWordBtn');
+        const wordFileInput = document.getElementById('wordFileInput');
+        const wordFileName = document.getElementById('wordFileName');
+        const wordPreview = document.getElementById('wordPreview');
+
+        // ---- 当前激活的输入源（'text', 'txt', 'word'）及存储的原始文本 ----
+        let activeSource = 'text';
+        let txtFileContent = '';
+        let wordFileContent = '';
+
+        // ---- 选项卡切换 ----
+        tabs.forEach(tab => {
+            tab.addEventListener('click', function() {
+                tabs.forEach(t => t.classList.remove('active'));
+                this.classList.add('active');
+                const target = this.dataset.tab;
+                activeSource = target;
+                panelText.style.display = target === 'text' ? 'block' : 'none';
+                panelTxt.style.display = target === 'txt' ? 'block' : 'none';
+                panelWord.style.display = target === 'word' ? 'block' : 'none';
+            });
+        });
+
+        // ---- 获取当前待处理的原始文本 ----
+        function getCurrentRawText() {
+            if (activeSource === 'text') {
+                return inputText.value;
+            } else if (activeSource === 'txt') {
+                return txtFileContent;
+            } else if (activeSource === 'word') {
+                return wordFileContent;
+            }
+            return '';
+        }
+
+        // ---- TXT 文件处理 ----
+        uploadTxtBtn.addEventListener('click', () => txtFileInput.click());
+        txtFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            txtFileName.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                txtFileContent = ev.target.result;
+                txtPreview.value = txtFileContent;
+            };
+            reader.readAsText(file, 'UTF-8');
+        });
+
+        // ---- Word 文件处理 (使用 mammoth.js) ----
+        uploadWordBtn.addEventListener('click', () => wordFileInput.click());
+        wordFileInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+            wordFileName.textContent = file.name;
+            const reader = new FileReader();
+            reader.onload = function(ev) {
+                const arrayBuffer = ev.target.result;
+                // 使用 mammoth 提取文本
+                mammoth.extractRawText({ arrayBuffer: arrayBuffer })
+                    .then(function(result) {
+                        wordFileContent = result.value;
+                        wordPreview.value = wordFileContent;
+                    })
+                    .catch(function(err) {
+                        alert('Word 文件解析失败：' + err.message);
+                        console.error(err);
+                    });
+            };
+            reader.readAsArrayBuffer(file);
+        });
+
+        // ---- 处理逻辑 ----
+        function getMode() {
+            for (const radio of modeRadios) {
+                if (radio.checked) return radio.value;
+            }
+            return 'word';
+        }
+
+        function getSymbolsToRemove() {
+            let symbols = '';
+            if (removeDigits.checked) symbols += '0123456789';
+            if (removeAsterisk.checked) symbols += '*';
+            if (customSymbols.value.trim()) symbols += customSymbols.value.trim();
+            // 去重并转义正则特殊字符
+            symbols = [...new Set(symbols.split(''))].join('');
+            return symbols;
+        }
+
+        function cleanText(text, symbolsToRemove) {
+            if (!symbolsToRemove) return text;
+            // 构建字符类正则，一次性移除所有指定符号
+            const escaped = symbolsToRemove.replace(/[-[\]/{}()*+?.\\^$|]/g, '\\$&');
+            const regex = new RegExp('[' + escaped + ']', 'g');
+            return text.replace(regex, '');
+        }
+
+        function processWordMode(rawText, symbolsToRemove) {
+            let text = cleanText(rawText, symbolsToRemove);
+            // 将所有非字母字符替换为空格，然后按空格分割
+            text = text.replace(/[^a-zA-Z]+/g, ' ');
+            const words = text.split(/\s+/).filter(w => w.length > 0);
+            return words.join('\n');
+        }
+
+        function processPhraseMode(rawText, symbolsToRemove, splitByNewline) {
+            let text = cleanText(rawText, symbolsToRemove);
+            // 先按换行符分割，再处理每一行
+            let lines = text.split(/\r?\n/);
+            let phrases = [];
+            for (let line of lines) {
+                line = line.trim();
+                if (!line) continue;
+                if (splitByNewline) {
+                    // 按逗号、分号、中文逗号、分号、顿号等分割
+                    let subItems = line.split(/[,;，；、]+/);
+                    for (let item of subItems) {
+                        item = item.trim();
+                        if (item) phrases.push(item);
+                    }
+                } else {
+                    phrases.push(line);
+                }
+            }
+            // 对每个短语只保留英文字母和内部空格
+            let cleanedPhrases = phrases.map(p => {
+                let cleaned = p.replace(/[^a-zA-Z\s]+/g, ' ');
+                cleaned = cleaned.replace(/\s+/g, ' ').trim();
+                return cleaned;
+            }).filter(p => p.length > 0);
+            return cleanedPhrases.join('\n');
+        }
+
+        processBtn.addEventListener('click', function() {
+            const raw = getCurrentRawText();
+            if (!raw.trim()) {
+                alert('请先输入或上传文本！');
+                return;
+            }
+            const mode = getMode();
+            const symbolsToRemove = getSymbolsToRemove();
+            let result = '';
+            if (mode === 'word') {
+                result = processWordMode(raw, symbolsToRemove);
+            } else {
+                const splitByNewline = useNewline.checked;
+                result = processPhraseMode(raw, symbolsToRemove, splitByNewline);
+            }
+            outputText.value = result;
+        });
+
+        copyBtn.addEventListener('click', function() {
+            const text = outputText.value;
+            if (!text) {
+                alert('没有可复制的内容！');
+                return;
+            }
+            navigator.clipboard.writeText(text).then(() => {
+                const orig = copyBtn.innerHTML;
+                copyBtn.innerHTML = '✅ 已复制';
+                setTimeout(() => copyBtn.innerHTML = orig, 1500);
+            }).catch(() => alert('复制失败，请手动选择复制。'));
+        });
+    })();
+</script>
+</body>
+</html>
