@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>我的英语教学工具箱</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #f0f4ff 0%, #f8fafc 100%);
+            margin: 0; padding: 2rem; display: flex; justify-content: center; align-items: center;
+            min-height: 100vh;
+        }
+        .container {
+            max-width: 600px; width: 100%; background: white; border-radius: 20px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08); padding: 2.5rem; text-align: center;
+        }
+        h1 {
+            font-size: 2rem; margin-bottom: 0.5rem; color: #1e293b;
+        }
+        p.subtitle { color: #64748b; margin-bottom: 2rem; }
+        .tool-card {
+            display: block; background: #f8fafc; border: 1px solid #e2e8f0;
+            border-radius: 14px; padding: 1.2rem; margin-bottom: 1rem;
+            text-decoration: none; color: #0f172a; transition: all 0.2s;
+            text-align: left; display: flex; align-items: center; gap: 1rem;
+        }
+        .tool-card:hover {
+            background: #eff6ff; border-color: #2563eb; box-shadow: 0 4px 10px rgba(37,99,235,0.1);
+        }
+        .tool-icon { font-size: 2rem; }
+        .tool-title { font-weight: 700; font-size: 1.1rem; }
+        .tool-desc { color: #475569; font-size: 0.9rem; }
+        .footer { margin-top: 2rem; font-size: 0.8rem; color: #94a3b8; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>📦 英语教学工具箱</h1>
+        <p class="subtitle">请选择您需要使用的工具</p>
+
+        <a class="tool-card" href="./vocab-filter.html">
+            <span class="tool-icon">📖</span>
+            <span>
+                <div class="tool-title">分级词汇筛选与查询</div>
+                <div class="tool-desc">导入含★词汇，分析文本生词等级，支持派生词识别</div>
+            </span>
+        </a>
+
+        <a class="tool-card" href="./text-cleaner.html">
+            <span class="tool-icon">🧹</span>
+            <span>
+                <div class="tool-title">TXT & Word 文本净化</div>
+                <div class="tool-desc">去除数字、符号，提取纯英文单词或短语</div>
+            </span>
+        </a>
+
+        <!-- 如果以后有更多工具，继续添加 <a class="tool-card"> 即可 -->
+
+        <div class="footer">
+            🚀 托管于 GitHub Pages · 随时可用
+        </div>
+    </div>
+</body>
+</html>
