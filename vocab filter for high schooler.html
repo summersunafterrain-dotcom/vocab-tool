@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>分级词汇筛选 · 查询与分析（含派生词识别）</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mammoth/1.6.0/mammoth.browser.min.js"></script>
+    <style>
+        :root {
+            --no-star: #10b981; --one-star: #f59e0b; --two-star: #ef4444;
+            --primary: #2563eb; --bg: #f8fafc; --card: #ffffff; --border: #e2e8f0;
+        }
+        body {
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: #f1f5f9;
+            margin: 0; padding: 1.5rem;
+            display: flex; justify-content: center;
+        }
+        .container { max-width: 1000px; width: 100%; display: flex; flex-direction: column; gap: 1.5rem; }
+        h1 { text-align: center; color: #0f172a; font-size: 1.8rem; }
+        .card {
+            background: var(--card); border-radius: 12px; padding: 1.2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.08); border: 1px solid var(--border);
+        }
+        .card-header {
+            display: flex; justify-content: space-between; align-items: center;
+            cursor: pointer; user-select: none;
+        }
+        .card-header .title { font-weight: 700; font-size: 1.1rem; }
+        .card-body { margin-top: 0.8rem; }
+        textarea {
+            width: 100%; box-sizing: border-box; font-family: monospace; font-size: 0.9rem;
+            padding: 0.6rem; border: 1px solid var(--border); border-radius: 8px;
+            resize: vertical; background: #fafafa;
+        }
+        .btn {
+            background: var(--primary); color: white; border: none; padding: 0.5rem 1.2rem;
+            border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 0.9rem;
+            display: inline-flex; align-items: center; gap: 0.3rem;
+        }
+        .btn:hover { background: #1d4ed8; }
+        .btn-outline { background: white; color: var(--primary); border: 1px solid var(--primary); }
+        .btn-outline:hover { background: #eff6ff; }
+        .btn-sm { padding: 0.3rem 1rem; font-size: 0.8rem; }
+        .upload-area { display: flex; gap: 0.5rem; align-items: center; flex-wrap: wrap; }
+        .file-info { font-size: 0.85rem; color: #475569; }
+
+        .lookup-box { display: flex; gap: 0.5rem; align-items: center; }
+        .lookup-result {
+            margin-top: 0.5rem; padding: 0.5rem; background: #f8fafc;
+            border-radius: 8px; font-size: 0.9rem;
+        }
+        .level-badge {
+            display: inline-block; padding: 0.2rem 0.6rem; border-radius: 12px;
+            font-weight: 600; font-size: 0.8rem;
+        }
+        .level-0 { background: #d1fae5; color: #065f46; }
+        .level-1 { background: #fef3c7; color: #92400e; }
+        .level-2 { background: #fee2e2; color: #991b1b; }
+
+        .highlight-text {
+            background: #f8fafc; border: 1px solid var(--border); border-radius: 8px;
+            padding: 1rem; line-height: 2.2; font-size: 1rem; white-space: pre-wrap;
+            word-break: break-word;
+        }
+        .vocab-0 { background: #d1fae5; border-radius: 4px; padding: 0 2px; }
+        .vocab-1 { background: #fef3c7; border-radius: 4px; padding: 0 2px; }
+        .vocab-2 { background: #fee2e2; border-radius: 4px; padding: 0 2px; }
+        .derived {
+            border-bottom: 2px dashed currentColor;
+            cursor: help;
+        }
+
+        .stats-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px,1fr)); gap: 0.8rem; margin: 1rem 0; }
+        .stat-box { background: #f1f5f9; padding: 0.6rem; border-radius: 8px; text-align: center; }
+        .stat-box .big { font-size: 1.8rem; font-weight: 700; }
+        .legend { display: flex; gap: 1rem; flex-wrap: wrap; margin: 0.5rem 0; }
+        .legend-item { display: flex; align-items: center; gap: 0.3rem; }
+        .legend-color { width: 14px; height: 14px; border-radius: 4px; display: inline-block; }
+
+        .freq-table { width: 100%; border-collapse: collapse; margin-top: 0.8rem; }
+        .freq-table th, .freq-table td {
+            border: 1px solid #e2e8f0; padding: 0.3rem 0.6rem; text-align: left;
+        }
+        .freq-table th { background: #f1f5f9; font-weight: 600; }
+
+        .collapsed .card-body { display: none; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h1>📖 分级词汇筛选 · 查询与分析（派生词识别）</h1>
+
+    <!-- 导入区 -->
+    <div class="card" id="importCard">
+        <div class="card-header" onclick="toggleCard('importCard')">
+            <span class="title">📥 导入混合词汇表（支持粘贴/TXT/Word）</span>
+            <span>▼</span>
+        </div>
+        <div class="card-body">
+            <div class="upload-area">
+                <button class="btn btn-sm btn-outline" id="pasteTab">📋 粘贴文本</button>
+                <button class="btn btn-sm btn-outline" id="txtTab">📄 上传 TXT</button>
+                <button class="btn btn-sm btn-outline" id="wordTab">📘 上传 Word</button>
+            </div>
+            <div id="importPastePanel" style="margin-top:0.5rem;">
+                <textarea id="importText" placeholder="粘贴词汇，如：&#10;abroad absence**&#10;abandon** absolutely*&#10;analyse (analyze)**" style="height:100px;"></textarea>
+            </div>
+            <div id="importTxtPanel" style="display:none; margin-top:0.5rem;">
+                <button class="btn btn-sm btn-outline" id="selectTxtBtn">选择 TXT 文件</button>
+                <input type="file" id="txtFileInput" accept=".txt" style="display:none;">
+                <span class="file-info" id="txtFileName"></span>
+                <textarea id="txtPreview" readonly style="height:100px; margin-top:0.3rem;"></textarea>
+            </div>
+            <div id="importWordPanel" style="display:none; margin-top:0.5rem;">
+                <button class="btn btn-sm btn-outline" id="selectWordBtn">选择 Word 文件 (.docx)</button>
+                <input type="file" id="wordFileInput" accept=".docx" style="display:none;">
+                <span class="file-info" id="wordFileName"></span>
+                <textarea id="wordPreview" readonly style="height:100px; margin-top:0.3rem;"></textarea>
+            </div>
+            <div style="margin-top:0.8rem;">
+                <button class="btn" id="importBtn">⚡ 立即导入并分级</button>
+                <span id="importStatus" style="margin-left:1rem; font-size:0.9rem;"></span>
+            </div>
+            <div style="margin-top:0.5rem; font-size:0.85rem; color:#475569;">
+                💡 支持括号内变体，如 analyse (analyze)**；分析文本时可识别派生词（如 retired→retire）。
+            </div>
+        </div>
+    </div>
+
+    <!-- 查询单词 -->
+    <div class="card">
+        <div class="card-header" style="cursor:default;">
+            <span class="title">🔍 查询单词级别（显示星号）</span>
+        </div>
+        <div class="card-body">
+            <div class="lookup-box">
+                <input type="text" id="lookupWord" placeholder="输入单词，如 abandon** 或 abandon" style="flex:1; padding:0.5rem; border:1px solid #cbd5e1; border-radius:6px;">
+                <button class="btn btn-sm" id="lookupBtn">查询</button>
+            </div>
+            <div id="lookupResult" class="lookup-result"></div>
+        </div>
+    </div>
+
+    <!-- 文本分析 -->
+    <div class="card">
+        <div class="card-header" style="cursor:default;">
+            <span class="title">📄 文本分级分析（含派生词）与词频统计</span>
+        </div>
+        <div class="card-body">
+            <textarea id="readingText" placeholder="在此粘贴英语文章段落..." style="height:120px;"></textarea>
+            <button class="btn" id="analyzeBtn" style="margin-top:0.5rem;">🔍 分析文本</button>
+            <div id="resultArea" style="display:none; margin-top:1rem;">
+                <div class="legend">
+                    <span class="legend-item"><span class="legend-color" style="background:#d1fae5;"></span> 0（义务教育）</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#fef3c7;"></span> *（必修）</span>
+                    <span class="legend-item"><span class="legend-color" style="background:#fee2e2;"></span> **（选择性必修）</span>
+                    <span class="legend-item"><span style="border-bottom:2px dashed #475569;">派生词</span>（同色虚线，悬停查看原词）</span>
+                </div>
+                <div class="highlight-text" id="highlightPane"></div>
+                <div class="stats-grid" id="statsPane"></div>
+                <div id="freqTables"></div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    const LS_KEY = 'word_filter_v6';
+    let data = { vocab0: [], vocab1: [], vocab2: [] };
+
+    function saveData() { localStorage.setItem(LS_KEY, JSON.stringify(data)); }
+    function loadData() {
+        const saved = localStorage.getItem(LS_KEY);
+        if (saved) {
+            try {
+                const obj = JSON.parse(saved);
+                data.vocab0 = obj.vocab0 || [];
+                data.vocab1 = obj.vocab1 || [];
+                data.vocab2 = obj.vocab2 || [];
+            } catch(e) {}
+        }
+        updateImportStatus();
+    }
+
+    // 词形还原（同前）
+    const irregularMap = {
+        "went":"go","gone":"go","did":"do","done":"do","had":"have","has":"have",
+        "was":"be","were":"be","been":"be","am":"be","is":"be","are":"be",
+        "said":"say","made":"make","got":"get","given":"give","gave":"give",
+        "taken":"take","took":"take","came":"come","come":"come",
+        "saw":"see","seen":"see","knew":"know","known":"know",
+        "thought":"think","brought":"bring","bought":"buy",
+        "found":"find","left":"leave","felt":"feel","became":"become",
+        "began":"begin","begun":"begin","built":"build","caught":"catch",
+        "chose":"choose","chosen":"choose","drew":"draw","drawn":"draw",
+        "drove":"drive","driven":"drive","ate":"eat","eaten":"eat",
+        "fell":"fall","fallen":"fall","flew":"fly","flown":"fly",
+        "forgot":"forget","forgotten":"forget","froze":"freeze","frozen":"freeze",
+        "grew":"grow","grown":"grow","hid":"hide","hidden":"hide",
+        "held":"hold","kept":"keep","led":"lead","lent":"lend",
+        "lay":"lie","lain":"lie","lost":"lose","meant":"mean",
+        "met":"meet","paid":"pay","put":"put","read":"read",
+        "rode":"ride","ridden":"ride","rang":"ring","rung":"ring",
+        "rose":"rise","risen":"rise","ran":"run","run":"run",
+        "showed":"show","shown":"show","sang":"sing","sung":"sing",
+        "sat":"sit","slept":"sleep","spoke":"speak","spoken":"speak",
+        "spent":"spend","stood":"stand","stole":"steal","stolen":"steal",
+        "swam":"swim","swum":"swim","taught":"teach","told":"tell",
+        "threw":"throw","thrown":"throw","understood":"understand",
+        "woke":"wake","woken":"wake","wore":"wear","worn":"wear",
+        "won":"win","wrote":"write","written":"write",
+        "children":"child","men":"man","women":"woman","teeth":"tooth",
+        "feet":"foot","mice":"mouse","geese":"goose","oxen":"ox",
+        "people":"person","sheep":"sheep","deer":"deer",
+        "better":"good","best":"good","worse":"bad","worst":"bad",
+        "more":"many","most":"many","less":"little","least":"little",
+        "further":"far","furthest":"far","farther":"far","farthest":"far"
+    };
+    function lemma(word) {
+        if(!word)return word;
+        const lower=word.toLowerCase();
+        if(irregularMap[lower])return irregularMap[lower];
+        if(lower.endsWith("'s")||lower.endsWith("’s"))return lower.slice(0,-2);
+        if(lower.endsWith("ies")&&lower.length>3)return lower.slice(0,-3)+"y";
+        if(lower.endsWith("ves")) {
+            const v={"leaves":"leaf","shelves":"shelf","thieves":"thief","wives":"wife","knives":"knife","lives":"life","halves":"half","calves":"calf","elves":"elf","selves":"self","wolves":"wolf"};
+            if(v[lower])return v[lower];
+            return lower.slice(0,-3)+"f";
+        }
+        if(lower.endsWith("es")&&(lower.endsWith("shes")||lower.endsWith("ches")||lower.endsWith("xes")||lower.endsWith("ses")||lower.endsWith("zes")))return lower.slice(0,-2);
+        if(lower.endsWith("s")&&!lower.endsWith("ss")&&lower.length>2)return lower.slice(0,-1);
+        if(lower.endsWith("ied")&&lower.length>3)return lower.slice(0,-3)+"y";
+        if(lower.endsWith("ed")&&!lower.endsWith("eed")) {
+            let s=lower.slice(0,-2);
+            if(s.length>2&&s[s.length-1]===s[s.length-2]&&!'aeiou'.includes(s[s.length-1]))s=s.slice(0,-1);
+            return s;
+        }
+        if(lower.endsWith("ing")){
+            let s=lower.slice(0,-3);
+            if(s.length>0&&!'aeiou'.includes(s[s.length-1])&&!s.endsWith("e")&&!s.endsWith("ee"))s+="e";
+            if(s.length>2&&s[s.length-1]===s[s.length-2]&&!'aeiou'.includes(s[s.length-1]))s=s.slice(0,-1);
+            return s;
+        }
+        if(lower.endsWith("ly")){
+            let s=lower.slice(0,-2);
+            if(s.endsWith("i")&&s.length>1)s=s.slice(0,-1)+"y";
+            return s;
+        }
+        if(lower.endsWith("ier")||lower.endsWith("iest"))return lower.slice(0,-3)+"y";
+        if(lower.endsWith("er")&&!lower.endsWith("ier")){
+            let s=lower.slice(0,-2);
+            if(s.length>1&&s[s.length-1]===s[s.length-2])s=s.slice(0,-1);
+            return s;
+        }
+        if(lower.endsWith("est")&&!lower.endsWith("iest")){
+            let s=lower.slice(0,-3);
+            if(s.length>1&&s[s.length-1]===s[s.length-2])s=s.slice(0,-1);
+            return s;
+        }
+        return lower;
+    }
+
+    // 派生词词根推导（增强）
+    function deriveRoot(word) {
+        const lower = word.toLowerCase();
+        // 常见派生后缀（长后缀优先）
+        const suffixes = [
+            "tional", "sional", "ationally",
+            "isation", "ization", "isation",
+            "fulness", "lessness",
+            "ability", "ibility",
+            "ment", "ness", "ship", "hood", "dom",
+            "able", "ible", "al", "ial", "ical",
+            "ful", "less", "ous", "ious", "ive", "ative",
+            "ly", "ize", "ise", "en", "ify",
+            "tion", "sion", "ment", "er", "or", "ist", "ism",
+            "ty", "ity", "cy", "ence", "ance",
+            "y", "ed", "ing", "s", "es", "est", "er"
+        ];
+        // 尝试剥离后缀，并补回可能的 e 或变体
+        for (const suf of suffixes) {
+            if (lower.endsWith(suf) && lower.length > suf.length + 2) {
+                let stem = lower.slice(0, -suf.length);
+                // 常见拼写规则：如 happiness -> happy (i->y)
+                if (suf.startsWith("i") && stem.length > 0) {
+                    let alt = stem + 'y';
+                    if (alt.length >= 3) return alt;
+                }
+                // 双写辅音还原 (stopped -> stop)
+                if (stem.length >= 3 && stem[stem.length-1] === stem[stem.length-2] && !'aeiouy'.includes(stem[stem.length-1])) {
+                    stem = stem.slice(0, -1);
+                }
+                // 去 e 加后缀的情况：直接返回 stem 可能缺失 e
+                // 简单尝试 stem + 'e'
+                return stem; // 大多数情况直接返回 stem
+            }
+        }
+        return null;
+    }
+
+    // 括号变体解析
+    function extractAlternatives(tokenWithoutStars) {
+        let cleaned = tokenWithoutStars.replace(/^[^a-z(]+|[^a-z)]+$/gi, '').trim();
+        if(!cleaned) return [];
+        const m = cleaned.match(/^([a-z]+)\s*\(([^)]*)\)$/i);
+        if(!m) return [cleaned.toLowerCase()];
+        const main = m[1].toLowerCase();
+        let inside = m[2].trim();
+        if(inside.startsWith('=')) inside = inside.substring(1).trim();
+        const alt = inside.toLowerCase().replace(/[^a-z]/g, '');
+        if(!alt) return [main];
+        return [main, alt];
+    }
+
+    function parseMixedText(text) {
+        const sets = {0:new Set(),1:new Set(),2:new Set()};
+        if(!text.trim()) return sets;
+        const tokens = text.split(/[\s,;，；\t]+/).filter(t=>t.trim());
+        for(let token of tokens){
+            let word = token.trim(), stars=0;
+            while(word.endsWith('*')){ stars++; word=word.slice(0,-1); }
+            const level = Math.min(stars,2);
+            for(let w of extractAlternatives(word)){
+                if(w && /[a-z]/i.test(w)) sets[level].add(w);
+            }
+        }
+        return sets;
+    }
+
+    function mergeVocab(newSets){
+        for(let lv=0;lv<3;lv++){
+            const arr=data[`vocab${lv}`], set=new Set(arr);
+            newSets[lv].forEach(w=>set.add(w));
+            data[`vocab${lv}`]=Array.from(set).sort((a,b)=>a.localeCompare(b,'en'));
+        }
+        saveData(); updateImportStatus();
+    }
+
+    function updateImportStatus(){
+        const t=data.vocab0.length+data.vocab1.length+data.vocab2.length;
+        document.getElementById('importStatus').innerHTML=
+            `✅ 总词汇: ${t} (0: ${data.vocab0.length}, *: ${data.vocab1.length}, **: ${data.vocab2.length})`;
+    }
+
+    // 查询
+    function lookupWord(){
+        const inp=document.getElementById('lookupWord').value.trim();
+        const div=document.getElementById('lookupResult');
+        if(!inp){div.innerHTML='';return;}
+        let clean=inp, stars=0;
+        while(clean.endsWith('*')){stars++;clean=clean.slice(0,-1);}
+        clean=clean.toLowerCase();
+        let foundLv=-1, list=[];
+        if(stars<=2 && data[`vocab${stars}`].includes(clean)){
+            foundLv=stars; list=data[`vocab${stars}`];
+        }else{
+            for(let lv=0;lv<3;lv++){
+                if(data[`vocab${lv}`].includes(clean)){foundLv=lv; list=data[`vocab${lv}`];break;}
+            }
+        }
+        if(foundLv===-1){div.innerHTML=`❌ 未找到 "${clean}"`;return;}
+        const names=['0（义务教育）','*（必修）','**（选择性必修）'];
+        const colors=['level-0','level-1','level-2'];
+        const idx=list.indexOf(clean);
+        const start=Math.max(0,idx-3), end=Math.min(list.length,idx+4);
+        const ctx=list.slice(start,end);
+        const starredTarget=clean+'*'.repeat(foundLv);
+        let html=`<span class="level-badge ${colors[foundLv]}">${names[foundLv]}</span> 找到 "<strong>${starredTarget}</strong>"<br><small>上下文：</small> `;
+        html+=ctx.map((w,i)=>{
+            const isT=(start+i)===idx;
+            const starred=w+'*'.repeat(foundLv);
+            return isT?`<strong style="background:#fde047;padding:0 2px;">${starred}</strong>`:starred;
+        }).join(' · ');
+        div.innerHTML=html;
+    }
+
+    // 文本分析
+    function analyzeText(){
+        const text=document.getElementById('readingText').value;
+        if(!text.trim()){alert('请粘贴文本');return;}
+        if(data.vocab0.length+data.vocab1.length+data.vocab2.length===0){alert('请先导入词汇表！');return;}
+
+        const vocabSets=[new Set(data.vocab0),new Set(data.vocab1),new Set(data.vocab2)];
+        const wordTokens=[];
+        const regex=/([a-zA-Z]+(?:['’][a-zA-Z]+)?)|([^a-zA-Z]+)/g;
+        let m;
+        while((m=regex.exec(text))!==null){
+            if(m[1])wordTokens.push({type:'word',text:m[1],idx:m.index});
+            else if(m[2])wordTokens.push({type:'nonword',text:m[2],idx:m.index});
+        }
+        if(!wordTokens.length)wordTokens.push({type:'nonword',text,idx:0});
+
+        const resultTokens=[];
+        const freq={0:new Map(),1:new Map(),2:new Map()};
+        // 新增派生词统计（按原词归类）
+        const derivedFreq={0:new Map(),1:new Map(),2:new Map()}; // 记录派生词实例, key: 原词, value: Map(派生形式, count)
+        let totalWords=0, matchedWords=0, derivedWords=0;
+
+        for(const tok of wordTokens){
+            if(tok.type==='nonword'){resultTokens.push({...tok,level:-1,derivedFrom:null});continue;}
+            totalWords++;
+            let level=-1, derivedFrom=null;
+            const wordLower=tok.text.toLowerCase();
+            const base=lemma(tok.text).toLowerCase();
+
+            // 先直接匹配原形/基本还原形
+            for(let lv=0;lv<3;lv++){
+                if(vocabSets[lv].has(wordLower)||vocabSets[lv].has(base)){level=lv;break;}
+            }
+            if(level===-1){
+                // 尝试派生词还原
+                const root=deriveRoot(base) || deriveRoot(wordLower);
+                if(root){
+                    for(let lv=0;lv<3;lv++){
+                        if(vocabSets[lv].has(root)){
+                            level=lv; derivedFrom=root; break;
+                        }
+                    }
+                }
+            }
+            if(level>=0){
+                if(derivedFrom){
+                    derivedWords++;
+                    // 记录派生词到对应原词
+                    const map=derivedFreq[level];
+                    if(!map.has(derivedFrom)) map.set(derivedFrom, new Map());
+                    const inner=map.get(derivedFrom);
+                    inner.set(tok.text.toLowerCase(), (inner.get(tok.text.toLowerCase())||0)+1);
+                }else{
+                    matchedWords++;
+                    freq[level].set(base, (freq[level].get(base)||0)+1);
+                }
+            }
+            resultTokens.push({...tok, level, derivedFrom});
+        }
+
+        // 高亮渲染
+        let html='';
+        for(const tok of resultTokens){
+            if(tok.type==='nonword')html+=escapeHtml(tok.text);
+            else{
+                const cls=tok.level>=0?`vocab-${tok.level}`:'';
+                const der=tok.derivedFrom?` derived`:'';
+                const title=tok.derivedFrom?` title="衍生自: ${tok.derivedFrom}"`:'';
+                html+=`<span class="${cls}${der}"${title}>${escapeHtml(tok.text)}</span>`;
+            }
+        }
+        document.getElementById('highlightPane').innerHTML=html;
+
+        // 统计面板
+        const allMatched=matchedWords+derivedWords;
+        let statsHtml=`<div class="stat-box"><div class="big">${totalWords}</div>总单词</div>`;
+        statsHtml+=`<div class="stat-box"><div class="big">${matchedWords}</div>直接匹配</div>`;
+        statsHtml+=`<div class="stat-box"><div class="big">${derivedWords}</div>派生识别</div>`;
+        statsHtml+=`<div class="stat-box"><div class="big">${totalWords?(allMatched/totalWords*100).toFixed(1):0}%</div>覆盖率</div>`;
+        document.getElementById('statsPane').innerHTML=statsHtml;
+
+        // 词频表格（合并直接词和派生词）
+        const levelNames=['0（义务教育）','*（必修）','**（选择性必修）'];
+        let freqHtml='';
+        for(let lv=0;lv<3;lv++){
+            const map=freq[lv];
+            const derMap=derivedFreq[lv];
+            if(map.size===0 && (!derMap||derMap.size===0)) continue;
+            freqHtml+=`<div style="margin-top:1rem;"><strong>${levelNames[lv]}</strong>`;
+            freqHtml+='<table class="freq-table"><tr><th>单词</th><th>直接次数</th><th>派生词实例</th></tr>';
+            const allKeys=new Set([...map.keys(), ...(derMap?derMap.keys():[])]);
+            const sorted=Array.from(allKeys).sort((a,b)=>a.localeCompare(b));
+            for(const word of sorted){
+                const direct=map.get(word)||0;
+                const derInstances=derMap?derMap.get(word):null;
+                let derStr='';
+                if(derInstances){
+                    derStr=Array.from(derInstances.entries()).map(([f,c])=>`${f} (${c})`).join(', ');
+                }
+                freqHtml+=`<tr><td>${escapeHtml(word)}</td><td>${direct}</td><td>${derStr||'-'}</td></tr>`;
+            }
+            freqHtml+='</table></div>';
+        }
+        document.getElementById('freqTables').innerHTML=freqHtml;
+        document.getElementById('resultArea').style.display='block';
+    }
+
+    function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+    function toggleCard(id){document.getElementById(id).classList.toggle('collapsed');}
+
+    // 事件绑定
+    document.getElementById('pasteTab').addEventListener('click',()=>{
+        document.getElementById('importPastePanel').style.display='block';
+        document.getElementById('importTxtPanel').style.display='none';
+        document.getElementById('importWordPanel').style.display='none';
+    });
+    document.getElementById('txtTab').addEventListener('click',()=>{
+        document.getElementById('importPastePanel').style.display='none';
+        document.getElementById('importTxtPanel').style.display='block';
+        document.getElementById('importWordPanel').style.display='none';
+    });
+    document.getElementById('wordTab').addEventListener('click',()=>{
+        document.getElementById('importPastePanel').style.display='none';
+        document.getElementById('importTxtPanel').style.display='none';
+        document.getElementById('importWordPanel').style.display='block';
+    });
+    document.getElementById('selectTxtBtn').addEventListener('click',()=>document.getElementById('txtFileInput').click());
+    document.getElementById('txtFileInput').addEventListener('change',function(e){
+        const file=e.target.files[0];
+        if(!file)return;
+        document.getElementById('txtFileName').textContent=file.name;
+        const reader=new FileReader();
+        reader.onload=ev=>{document.getElementById('txtPreview').value=ev.target.result;};
+        reader.readAsText(file,'UTF-8');
+    });
+    document.getElementById('selectWordBtn').addEventListener('click',()=>document.getElementById('wordFileInput').click());
+    document.getElementById('wordFileInput').addEventListener('change',function(e){
+        const file=e.target.files[0];
+        if(!file)return;
+        document.getElementById('wordFileName').textContent=file.name;
+        const reader=new FileReader();
+        reader.onload=function(ev){
+            mammoth.extractRawText({arrayBuffer:ev.target.result})
+                .then(res=>{document.getElementById('wordPreview').value=res.value;})
+                .catch(err=>alert('Word 解析失败: '+err));
+        };
+        reader.readAsArrayBuffer(file);
+    });
+    document.getElementById('importBtn').addEventListener('click',function(){
+        let text='';
+        const active=document.getElementById('importPastePanel').style.display!=='none'?'paste':
+                     (document.getElementById('importTxtPanel').style.display!=='none'?'txt':'word');
+        if(active==='paste')text=document.getElementById('importText').value;
+        else if(active==='txt')text=document.getElementById('txtPreview').value;
+        else text=document.getElementById('wordPreview').value;
+        if(!text.trim()){alert('没有文本可导入');return;}
+        const newSets=parseMixedText(text);
+        mergeVocab(newSets);
+        alert('导入完成！');
+    });
+    document.getElementById('lookupBtn').addEventListener('click',lookupWord);
+    document.getElementById('lookupWord').addEventListener('keyup',function(e){if(e.key==='Enter')lookupWord();});
+    document.getElementById('analyzeBtn').addEventListener('click',analyzeText);
+    loadData();
+})();
+</script>
+</body>
+</html>
